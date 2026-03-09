@@ -1,7 +1,9 @@
 TARGET = libaspt_spmm.a
 
-SRCS = $(wildcard *.cu) $(wildcard *.cc)
-OBJS = $(patsubst %cu, %cu.o, $(SRCS)) $(patsubst %cc, %cc.o, $(SRCS))
+CU_SRCS = $(wildcard *.cu)
+CC_SRCS = $(wildcard *.cc)
+# Apply each patsubst only to its own file type to avoid source files leaking into OBJS
+OBJS = $(patsubst %cu,%cu.o,$(CU_SRCS)) $(patsubst %cc,%cc.o,$(CC_SRCS))
 
 CUDA_HOME ?= /usr/local/cuda
 NVCC = $(CUDA_HOME)/bin/nvcc
