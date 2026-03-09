@@ -188,9 +188,31 @@ compute_spmm(CSRArrays * restrict csr, ValueType * restrict x, ValueType * restr
 	}
 
 	#ifdef SPMM_KERNEL
-	// Perhaps 128 is faster? Don't know for sure...
-	// RoDeSpmm_n32(csr->c_sm->n_segs, csr->c_sm->n_segs_residue, csr->n, k, csr->c_sm->Values(), csr->c_sm->ColumnIndices(), csr->c_sm->RowOffsets(), csr->c_sm->seg_row_indices, csr->c_sm->seg_row_indices_residue, csr->c_sm->seg_st_offsets, csr->x_d, csr->y_d, csr->stream1, csr->stream2);
-	RoDeSpmm_n128(csr->c_sm->n_segs, csr->c_sm->n_segs_residue, csr->n, k, csr->c_sm->Values(), csr->c_sm->ColumnIndices(), csr->c_sm->RowOffsets(), csr->c_sm->seg_row_indices, csr->c_sm->seg_row_indices_residue, csr->c_sm->seg_st_offsets, csr->x_d, csr->y_d, csr->stream1, csr->stream2);
+	{
+		const int n_segs = csr->c_sm->n_segs;
+		const int n_segs_residue = csr->c_sm->n_segs_residue;
+		// Guard: RoDeSpmmKernel launches two sub-kernels with grid_dim.x = ceil(n_segs/4)
+		// and ceil(n_segs_residue/4).  A zero grid dimension causes cudaErrorInvalidConfiguration.
+		// This happens for very sparse matrices (e.g. roadNet-CA, ~2.8 nnz/row) where
+		// RowDivide2Segment produces n_segs=0.  Also, n128 tile width = 64 requires k >= 64;
+		// use n32 (tile width = 32) for k = 32.
+		if (n_segs == 0 || n_segs_residue == 0) {
+			fprintf(stderr, "  [RoDe] WARNING: degenerate segment counts (n_segs=%d, n_segs_residue=%d)"
+			                " – matrix too sparse for RoDe; zeroing output\n", n_segs, n_segs_residue);
+			gpuCudaErrorCheck(cudaMemsetAsync(csr->y_d, 0, csr->m * k * sizeof(*csr->y_d), csr->stream));
+			gpuCudaErrorCheck(cudaStreamSynchronize(csr->stream));
+		} else if (k >= 64) {
+			// n128 variant: dense-matrix tile width = 64 columns; valid for k >= 64
+			RoDeSpmm_n128(n_segs, n_segs_residue, csr->n, k, csr->c_sm->Values(), csr->c_sm->ColumnIndices(), csr->c_sm->RowOffsets(), csr->c_sm->seg_row_indices, csr->c_sm->seg_row_indices_residue, csr->c_sm->seg_st_offsets, csr->x_d, csr->y_d, csr->stream1, csr->stream2);
+		} else if (k >= 32) {
+			// n32 variant: dense-matrix tile width = 32 columns; valid for k >= 32
+			RoDeSpmm_n32(n_segs, n_segs_residue, csr->n, k, csr->c_sm->Values(), csr->c_sm->ColumnIndices(), csr->c_sm->RowOffsets(), csr->c_sm->seg_row_indices, csr->c_sm->seg_row_indices_residue, csr->c_sm->seg_st_offsets, csr->x_d, csr->y_d, csr->stream1, csr->stream2);
+		} else {
+			fprintf(stderr, "  [RoDe] WARNING: k=%d < 32 not supported by any RoDe kernel; zeroing output\n", k);
+			gpuCudaErrorCheck(cudaMemsetAsync(csr->y_d, 0, csr->m * k * sizeof(*csr->y_d), csr->stream));
+			gpuCudaErrorCheck(cudaStreamSynchronize(csr->stream));
+		}
+	}
 	#endif
 
 	gpuCudaErrorCheck(cudaPeekAtLastError());
