@@ -1,5 +1,6 @@
-MODE=server
-# MODE=laptop
+MODE=laptop
+# MODE=server
+# MODE=h100
 
 EXE  = 
 # GPU
@@ -7,6 +8,10 @@ EXE  =
 # EXE += spmm_acc.exe
 # EXE += spmm_aspt_gpu.exe sddmm_aspt_gpu.exe
 # EXE += spmm_rode.exe sddmm_rode.exe
+ifeq ($(MODE), h100)
+EXE += spmm_aspt_gpu.exe
+EXE += spmm_rode.exe
+endif
 # EXE += spmm_hc.exe
 # EXE += spmm_dgsparse.exe sddmm_dgsparse.exe
 # EXE += spmm_gnnpilot.exe sddmm_gnnpilot.exe
@@ -55,6 +60,8 @@ EXE += spmm_aspt_cpu.exe sddmm_aspt_cpu.exe
 #####################################################################################################
 
 ifeq ($(MODE), laptop)
+	COMPILER_PREFIX=/usr/bin
+else ifeq ($(MODE), h100)
 	COMPILER_PREFIX=/usr/bin
 else
 	COMPILER_PREFIX=/various/dgal/gcc/gcc-12.2.0/gcc_bin/bin
@@ -148,9 +155,16 @@ SPARSE_SURVEY_ROOT=$(shell pwd)/deps
 
 ########## GPU ##########
 
-CUDA_PATH=/usr/local/cuda
+# Use CUDA_HOME from environment (set by: module load CUDA/12.4), fall back to default
+CUDA_PATH = $(or $(CUDA_HOME),/usr/local/cuda)
 NVCC=${CUDA_PATH}/bin/nvcc -ccbin=${CC}
-NVCCFLAGS        = -allow-unsupported-compiler -gencode arch=compute_80,code=sm_80
+# GPU architecture: 89=Ada Lovelace (RTX4090/L40), 90=Hopper (H100)
+ifeq ($(MODE), h100)
+GPU_ARCH ?= 90
+else
+GPU_ARCH ?= 89
+endif
+NVCCFLAGS        = -allow-unsupported-compiler -gencode arch=compute_$(GPU_ARCH),code=sm_$(GPU_ARCH)
 LDFLAGS_CUSPARSE = -lcuda -lcudart -lcusparse -lcublas
 
 DGSPARSE_PATH=$(SPARSE_SURVEY_ROOT)/dgSPARSE
@@ -280,14 +294,14 @@ spmm_acc.exe: obj/spmm_bench.o kernel_acc.cu $(LIB_OBJ)
 	$(NVCC) $(NVCCFLAGS) --compiler-options "$(CFLAGS) -I'$(ACC_PATH)'" $^ -o $@ $(LDFLAGS) -L'$(ACC_PATH)' -lacc_spmm
 
 spmm_aspt_gpu.exe: obj/spmm_bench.o kernel_aspt_gpu.cu $(LIB_OBJ)
-	cd $(ASPT_PATH)/gpu/spmm; make clean; make DOUBLE=$(DOUBLE) CPP=$(CPP) -j; cd -
+	cd $(ASPT_PATH)/gpu/spmm; make clean; make DOUBLE=$(DOUBLE) CPP=$(CPP) CC=$(CC) GPU_ARCH=$(GPU_ARCH) -j; cd -
 	$(NVCC) $(NVCCFLAGS) --compiler-options "$(CFLAGS) -D'SPMM_KERNEL' -I'$(ASPT_PATH)/gpu'" $^ -o $@ $(LDFLAGS) -L'$(ASPT_PATH)/gpu/spmm' -laspt_spmm
 sddmm_aspt_gpu.exe: obj/sddmm_bench.o kernel_aspt_gpu.cu $(LIB_OBJ)
 	cd $(ASPT_PATH)/gpu/sddmm/; make clean; make DOUBLE=$(DOUBLE) CPP=$(CPP) -j; cd -
 	$(NVCC) $(NVCCFLAGS) --compiler-options "$(CFLAGS) -D'SDDMM_KERNEL' -I'$(ASPT_PATH)/gpu'" $^ -o $@ $(LDFLAGS) -L'$(ASPT_PATH)/gpu/sddmm/' -laspt_sddmm
 
 spmm_rode.exe: obj/spmm_bench.o kernel_rode.cu $(LIB_OBJ)
-	cd $(RODE_PATH)/spmm; make clean; make CPP=$(CPP) -j; cd -
+	cd $(RODE_PATH)/spmm; make clean; make CPP=$(CPP) CC=$(CC) GPU_ARCH=$(GPU_ARCH) -j; cd -
 	$(NVCC) $(NVCCFLAGS) --compiler-options "$(CFLAGS) -D'SPMM_KERNEL' -I'$(RODE_PATH)'" $^ -o $@ $(LDFLAGS) -L'$(RODE_PATH)/spmm' -lrode_spmm
 sddmm_rode.exe: obj/sddmm_bench.o kernel_rode.cu $(LIB_OBJ)
 	cd $(RODE_PATH)/sddmm; make clean; make CPP=$(CPP) -j; cd -
