@@ -29,6 +29,7 @@ cd "${REPO_DIR}"
 GPU_RUN="yhrun -G 1 -p h100x"
 
 # ── Benchmark configuration ───────────────────────────────────────────────────
+export DATASET='MATRIX_MARKET'   # required by spmm_bench.cpp:128 (no NULL check → SIGSEGV if missing)
 export GPU_KERNEL=1
 export SYSTEM='NVIDIA-H100'
 
