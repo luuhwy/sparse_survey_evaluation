@@ -36,12 +36,12 @@ export GPU_KERNEL=1
 export SYSTEM='NVIDIA-H100'
 
 MATRICES=(
-    "/root/rootdata/mtx/web-Google/web-Google.mtx"
-    "/root/rootdata/mtx/roadNet-CA/roadNet-CA.mtx"
-    "/root/rootdata/mtx/cage15/cage15.mtx"
+    "/HOME/acict_hpjia/acict_hpjia_1/HDD_POOL/mihongli/suitesparse_all/web-Google/web-Google.mtx"
+    "/HOME/acict_hpjia/acict_hpjia_1/HDD_POOL/mihongli/suitesparse_all/roadNet-CA/roadNet-CA.mtx"
+    "/HOME/acict_hpjia/acict_hpjia_1/HDD_POOL/mihongli/suitesparse_all/cage15/cage15.mtx"
 )
 
-K_VALUES=(16 32 64 128 256 512 1024)
+K_VALUES=(16 32 64 128 256)
 
 # Optional output log file (default: stdout)
 LOG="${1:-/dev/stdout}"

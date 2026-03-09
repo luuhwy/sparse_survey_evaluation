@@ -155,8 +155,20 @@ SPARSE_SURVEY_ROOT=$(shell pwd)/deps
 
 ########## GPU ##########
 
-# Use CUDA_HOME from environment (set by: module load CUDA/12.4), fall back to default
-CUDA_PATH = $(or $(CUDA_HOME),/usr/local/cuda)
+# CUDA detection (in priority order):
+#   1. CUDA_HOME in environment  (set by: module load CUDA/12.4)
+#   2. Derive from nvcc found in PATH  (module may only add nvcc to PATH)
+#   3. Fall back to /usr/local/cuda
+ifdef CUDA_HOME
+  CUDA_PATH := $(CUDA_HOME)
+else
+  _NVCC_IN_PATH := $(shell which nvcc 2>/dev/null)
+  ifneq ($(_NVCC_IN_PATH),)
+    CUDA_PATH := $(patsubst %/bin/nvcc,%,$(_NVCC_IN_PATH))
+  else
+    CUDA_PATH := /usr/local/cuda
+  endif
+endif
 NVCC=${CUDA_PATH}/bin/nvcc -ccbin=${CC}
 # GPU architecture: 89=Ada Lovelace (RTX4090/L40), 90=Hopper (H100)
 ifeq ($(MODE), h100)
@@ -294,14 +306,14 @@ spmm_acc.exe: obj/spmm_bench.o kernel_acc.cu $(LIB_OBJ)
 	$(NVCC) $(NVCCFLAGS) --compiler-options "$(CFLAGS) -I'$(ACC_PATH)'" $^ -o $@ $(LDFLAGS) -L'$(ACC_PATH)' -lacc_spmm
 
 spmm_aspt_gpu.exe: obj/spmm_bench.o kernel_aspt_gpu.cu $(LIB_OBJ)
-	cd $(ASPT_PATH)/gpu/spmm; make clean; make DOUBLE=$(DOUBLE) CPP=$(CPP) CC=$(CC) GPU_ARCH=$(GPU_ARCH) -j; cd -
+	cd $(ASPT_PATH)/gpu/spmm; make clean; make DOUBLE=$(DOUBLE) CPP=$(CPP) CC=$(CC) GPU_ARCH=$(GPU_ARCH) CUDA_HOME=$(CUDA_PATH) -j; cd -
 	$(NVCC) $(NVCCFLAGS) --compiler-options "$(CFLAGS) -D'SPMM_KERNEL' -I'$(ASPT_PATH)/gpu'" $^ -o $@ $(LDFLAGS) -L'$(ASPT_PATH)/gpu/spmm' -laspt_spmm
 sddmm_aspt_gpu.exe: obj/sddmm_bench.o kernel_aspt_gpu.cu $(LIB_OBJ)
 	cd $(ASPT_PATH)/gpu/sddmm/; make clean; make DOUBLE=$(DOUBLE) CPP=$(CPP) -j; cd -
 	$(NVCC) $(NVCCFLAGS) --compiler-options "$(CFLAGS) -D'SDDMM_KERNEL' -I'$(ASPT_PATH)/gpu'" $^ -o $@ $(LDFLAGS) -L'$(ASPT_PATH)/gpu/sddmm/' -laspt_sddmm
 
 spmm_rode.exe: obj/spmm_bench.o kernel_rode.cu $(LIB_OBJ)
-	cd $(RODE_PATH)/spmm; make clean; make CPP=$(CPP) CC=$(CC) GPU_ARCH=$(GPU_ARCH) -j; cd -
+	cd $(RODE_PATH)/spmm; make clean; make CPP=$(CPP) CC=$(CC) GPU_ARCH=$(GPU_ARCH) CUDA_HOME=$(CUDA_PATH) -j; cd -
 	$(NVCC) $(NVCCFLAGS) --compiler-options "$(CFLAGS) -D'SPMM_KERNEL' -I'$(RODE_PATH)'" $^ -o $@ $(LDFLAGS) -L'$(RODE_PATH)/spmm' -lrode_spmm
 sddmm_rode.exe: obj/sddmm_bench.o kernel_rode.cu $(LIB_OBJ)
 	cd $(RODE_PATH)/sddmm; make clean; make CPP=$(CPP) -j; cd -
